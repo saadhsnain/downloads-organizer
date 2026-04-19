@@ -32,11 +32,9 @@ The installer handles everything: API key, script placement, starter folders, an
 
 1. Go to [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey) and sign in with your Google account.
 
-> 📸 **[SCREENSHOT: Google AI Studio — API Keys page showing the "Create API key" button]**
 
 2. Click **Create API key** and copy the key that appears. It looks like `AIzaSy...`.
 
-> 📸 **[SCREENSHOT: The generated API key dialog with the copy button highlighted]**
 
 ---
 
@@ -62,7 +60,6 @@ chmod +x ~/Scripts/organizer.py
 
 You can also use project or client names — the AI will figure it out from context.
 
-> 📸 **[SCREENSHOT: Finder showing ~/Downloads with several subfolders like Images, Documents, Installers, Misc]**
 
 ---
 
@@ -92,7 +89,6 @@ This scans all loose files currently in `~/Downloads` root and sorts them. Check
 cat ~/Downloads/.organizer_log.txt
 ```
 
-> 📸 **[SCREENSHOT: Terminal showing the organizer log output with a successful move entry]**
 
 ---
 
@@ -142,7 +138,6 @@ The agent watches `~/Downloads` for changes and calls the script automatically.
 launchctl load -w ~/Library/LaunchAgents/com.user.downloads-organizer.plist
 ```
 
-> 📸 **[SCREENSHOT: Terminal showing the launchctl load command completing with no errors]**
 
 ---
 
@@ -153,7 +148,6 @@ macOS protects `~/Downloads` under its privacy system and will show a permission
 1. Open **System Settings → Privacy & Security → Full Disk Access**
 2. Find `python3` (or `python3.x`) in the list and toggle it **on**
 
-> 📸 **[SCREENSHOT: Full Disk Access list with the python3 toggle switched on]**
 
 If Python isn't in the list, click **+** and add it from `/opt/homebrew/bin/python3` (or wherever `which python3` points on your machine).
 
