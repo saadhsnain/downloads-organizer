@@ -146,6 +146,19 @@ launchctl load -w ~/Library/LaunchAgents/com.user.downloads-organizer.plist
 
 ---
 
+## One-Time Permission (Silence the macOS Dialog)
+
+macOS protects `~/Downloads` under its privacy system and will show a permission dialog the first time Python tries to access it. To prevent this from appearing on every scheduled run, grant Python permanent access once:
+
+1. Open **System Settings → Privacy & Security → Full Disk Access**
+2. Find `python3` (or `python3.x`) in the list and toggle it **on**
+
+> 📸 **[SCREENSHOT: Full Disk Access list with the python3 toggle switched on]**
+
+If Python isn't in the list, click **+** and add it from `/opt/homebrew/bin/python3` (or wherever `which python3` points on your machine).
+
+---
+
 ## Verify It's Working
 
 Drop any file into `~/Downloads`. Within a few seconds it should move into a subfolder.
