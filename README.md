@@ -9,7 +9,7 @@ Automatically sort files dropped into your Mac `~/Downloads` folder using Google
 ## Quick Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/downloads-organizer.git
+git clone https://github.com/saadhsnain/downloads-organizer.git
 cd downloads-organizer
 bash install.sh
 ```
