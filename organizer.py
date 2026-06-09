@@ -33,9 +33,19 @@ API_KEY = os.environ.get("ORGANIZER_API_KEY", "")
 # gemini-2.0-flash       — slightly smarter, still very fast
 GEMINI_MODEL = "gemini-2.5-flash-lite"
 
-# Optional: local Ollama fallback when Gemini is unreachable.
-# Set OLLAMA_MODEL = "" to disable the fallback entirely.
-OLLAMA_MODEL = ""
+# Fallback tier 1 (cloud): OpenRouter, used when Gemini is unreachable/rate-limited.
+# Preferred over the local model because it doesn't tax the Mac. Set
+# OPENROUTER_API_KEY in ~/.scripts.env. Set OPENROUTER_MODEL = "" to skip this tier.
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+# Must be a general instruction-following model. (The nemotron *content-safety*
+# model only judges safe/unsafe and never returns a folder number — don't use it.)
+OPENROUTER_MODEL = "google/gemma-4-31b-it:free"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Fallback tier 2 (local, last resort): Ollama. Runs the model on this Mac, which
+# heats it up — only used if both Gemini and OpenRouter fail. Set OLLAMA_MODEL = ""
+# to disable. Full chain: Gemini -> OpenRouter -> Ollama -> Misc/.
+OLLAMA_MODEL = "qwen3.5:latest"
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
 # Folder name used when the AI can't confidently classify a file.
@@ -166,6 +176,42 @@ def classify_with_gemini(file_info: dict, folders: list[str]) -> str | None:
         return None
 
 
+def classify_with_openrouter(file_info: dict, folders: list[str]) -> str | None:
+    if not (OPENROUTER_API_KEY and OPENROUTER_MODEL):
+        return None
+    prompt, numbered = build_prompt(file_info, folders)
+    payload = json.dumps({
+        "model": OPENROUTER_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 20,
+        "temperature": 0,
+    }).encode()
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+    }
+    try:
+        req = urllib.request.Request(OPENROUTER_URL, data=payload, headers=headers)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+        choices = data.get("choices", [])
+        if not choices:
+            log(f"OpenRouter: no choices ({json.dumps(data)[:200]})")
+            return None
+        result_text = (choices[0].get("message", {}).get("content") or "").strip()
+        if not result_text:
+            log("OpenRouter: empty response")
+            return None
+        folder = parse_number(result_text, numbered)
+        if folder:
+            return folder
+        log(f"OpenRouter unexpected value: '{result_text}'")
+        return None
+    except Exception as e:
+        log(f"OpenRouter API error: {e}")
+        return None
+
+
 def classify_with_ollama(file_info: dict, folders: list[str]) -> str | None:
     if not OLLAMA_MODEL:
         return None
@@ -174,7 +220,8 @@ def classify_with_ollama(file_info: dict, folders: list[str]) -> str | None:
         "model": OLLAMA_MODEL,
         "prompt": prompt,
         "stream": False,
-        "options": {"num_predict": 1024},
+        "think": False,  # qwen3.5 returns an empty response if it spends the budget thinking
+        "options": {"num_predict": 50, "temperature": 0},
     }).encode()
     try:
         req = urllib.request.Request(OLLAMA_URL, data=payload, headers={"Content-Type": "application/json"})
@@ -198,6 +245,11 @@ def classify_file(file_info: dict, folders: list[str]) -> str:
     result = classify_with_gemini(file_info, folders)
     if result:
         return result
+    if OPENROUTER_API_KEY and OPENROUTER_MODEL:
+        log(f"Falling back to OpenRouter ({OPENROUTER_MODEL})...")
+        result = classify_with_openrouter(file_info, folders)
+        if result:
+            return result
     if OLLAMA_MODEL:
         log(f"Falling back to Ollama ({OLLAMA_MODEL})...")
         result = classify_with_ollama(file_info, folders)

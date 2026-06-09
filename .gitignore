@@ -2,3 +2,4 @@
 __pycache__/
 *.pyc
 .organizer_log.txt
+organizer_launchd.log
