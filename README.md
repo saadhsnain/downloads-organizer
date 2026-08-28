@@ -212,3 +212,135 @@ launchctl load -w ~/Library/LaunchAgents/com.user.downloads-organizer.plist
 **File was not moved**
 - The script only processes files sitting directly in `~/Downloads` root — files already in subfolders are ignored
 - Check the log to confirm the file was seen, or run manually: `python3 ~/Scripts/organizer.py`
+
+## 2026-08-28 — project-first routing
+
+The classification prompt now applies a precedence rule: client/project folders win over
+file-type folders, so a client's poster files under that client rather than `Images`. Personal
+material (statements, contracts, IDs, credentials, chat exports) routes to `Personal` and
+never to a client folder. Client hints let an abbreviation or a former role name
+resolve to the same client.
+
+Client staging folders and `Personal/` were added to `~/Downloads`.
+
+Ollama fallback repointed from `qwen3.5:latest` to `glm-5.2:cloud` — the former was removed
+from the machine. This is tier 3; Gemini and OpenRouter both remain configured.
+
+## 2026-08-28 — canonical client names
+
+Client staging folders now take their exact names from an external canonical
+source (for this install, a Notion database), shared with the delivery folder in
+Drive. The prompt tells the model to use the exact folder name rather than invent a
+variant, and to treat a former name or renamed role as the same client.
+
+## 2026-08-28 — lanes, and a sweep
+
+The organizer was write-only for its whole life. It moved files into folders and
+nothing ever took them out, so every folder was terminal and the only possible
+direction was growth. Sorting by file type made that unfixable: a type folder has
+no lifecycle, so it cannot have an expiry rule. `Images/` held a client's door
+hanger, a wallpaper and a stale screenshot — same type, three different fates.
+
+Folders are now **lanes**, chosen by what happens to the file next:
+
+| Lane | Meaning | Expires |
+|---|---|---|
+| `_clients/<Name>` | work to be delivered; flushed to Drive `10 Clients/` | no |
+| `_reference` | looked up again: icons, logos, brand assets, fonts | no |
+| `_personal` | statements, contracts, IDs, credentials, chat exports | no |
+| `_scratch/YYYY-MM` | everything else, and the answer whenever unsure | **yes** |
+
+Client names are canonical, from the Notion Companies database — the same list
+`cadastre drive` reconciles Google Drive against.
+
+`_scratch` is dated on arrival and swept on a clock, so an unclassified file
+expires by itself. The prompt now prefers `_scratch` over a low-confidence guess,
+because a file parked there is cheap to recover and a file misfiled into the wrong
+client folder is not.
+
+    organizer.py --sweep            report what is past SWEEP_AFTER_DAYS (90)
+    organizer.py --sweep --apply    remove it (macOS Trash where available)
+
+The scheduled run **reports** the sweep and never applies it. An unattended job
+that deletes personal files is a review-gate change under `~/AGENTS.md`; that
+decision is not this script's to make.
+
+## 2026-08-28 — client lane gets an exit
+
+`_clients/` shipped write-only: files went in and nothing took them out, which is
+the same fault the sweep was written to fix, reproduced in a new lane. The README
+claimed client work "leaves for Drive" while nothing in the code touched Drive.
+It does now.
+
+    organizer.py --flush            report what is staged
+    organizer.py --flush --apply    move it to Drive `10 Clients/<Name>/`
+
+Staging is deliberate, not a fallback for an unmounted Drive. Classification is a
+single API call, and when every tier fails it takes the fallback path silently —
+writing straight through would sync that mistake into a client's folder before
+anyone saw it. A pass through `_clients/` keeps a misroute local until the next run.
+
+**A client folder is matched, never created.** If `10 Clients/<Name>` does not
+exist the files are held back with a message, because creating it here would
+invent a client behind `cadastre drive`'s back — that command owns reconciliation
+against the Notion Companies database, and this one deliberately knows nothing
+about Notion.
+
+The scheduled run **applies the flush but only reports the sweep**. A flush moves
+files between two folders you own and is undone by dragging them back; the sweep
+removes them. Only the destructive half waits for a human.
+
+### Fallback tiers
+
+Ollama is disabled: `qwen3.5` was removed to reclaim disk, and `glm-5.2:cloud` is
+hosted rather than local — it answers 402 without a subscription, so naming it
+bought a tier that always failed. To restore, `ollama pull llama3.2:3b` and set
+`OLLAMA_MODEL`. OpenRouter is currently returning 401 with a key present, so
+**Gemini is effectively the only live tier**; when it is rate-limited, files take
+the `_scratch` fallback and expire on the clock rather than piling up.
+
+## 2026-08-28 — on-device classification
+
+Tier 0 is now Apple's Foundation Models, running on this Mac via a small Swift
+helper (`apple-classify.swift`, compiled to `.build/` on first use). Requires
+macOS 26 with Apple Intelligence on; falls through to the cloud tiers on any
+failure — no toolchain, no framework, build error, guardrail refusal.
+
+Full chain: **Apple -> Gemini -> OpenRouter -> Ollama -> `_scratch/`**
+
+Why it leads rather than backs up the chain:
+
+- **Nothing leaves the Mac.** Classification sends a 500-character preview of the
+  file, and that preview can be a bank statement, a signed contract, or a
+  credentials file. The `_personal` lane exists because that material is
+  sensitive; sending it to a third party to decide it is sensitive was backwards.
+- **No rate limit.** The cloud tier's free quota was exhausted twice in one
+  afternoon of testing, and every file that arrived meanwhile took the fallback
+  path.
+- ~0.24s per file against ~1s, no keys, no network.
+
+### It needs its own prompt
+
+The on-device model is roughly 3B parameters and cannot share the cloud prompt.
+Measured on the same eight files:
+
+| Prompt | Score |
+|---|---|
+| Cloud prompt, free text | 1/7 — routed a bank statement to a client folder |
+| Cloud prompt + guided generation | 2/8 — collapsed to always naming the first option |
+| Flat rule list + guided generation | **8/8 on-device only** |
+
+Small models follow rules; they do not weigh a precedence argument. Guided
+generation constrains the answer to the exact folder list, so it cannot reply
+with prose or invent a folder. `CLIENT_HINTS` supplies the words that mean a
+given client — a small model will not infer that an abbreviation or a renamed
+role refers to a client the way a frontier model does. Hints live in
+`local_config.json`, which is gitignored.
+
+### Unsure escalates
+
+The rule list ends "anything else, or unsure -> `_scratch`", so that answer is an
+admission rather than a decision, and it escalates to the cloud tier. A confident
+answer never escalates — which is what keeps personal material local: a bank
+statement is classified on-device and never sent anywhere. In testing only three
+of eight files reached the network, and neither `_personal` file was among them.

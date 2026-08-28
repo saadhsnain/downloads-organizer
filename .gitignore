@@ -3,3 +3,9 @@ __pycache__/
 *.pyc
 .organizer_log.txt
 organizer_launchd.log
+
+# compiled Apple Foundation Models helper
+.build/
+
+# site-specific: Drive path and client names
+local_config.json
